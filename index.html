@@ -239,6 +239,7 @@ table.leads-table td a:hover{text-decoration:underline}
 <button class="btn btn-ghost" onclick="document.getElementById('importFile').click()">Import</button>
 <input type="file" id="importFile" accept=".json,.csv" style="display:none" onchange="importData(event)">
 <button class="btn btn-gold" onclick="openAddModal()">+ Add Lead</button>
+<button class="btn btn-ghost" id="installBtn" style="display:none" onclick="installPWA()">&#x1F4F2; Install App</button>
 </div>
 </div>
 
@@ -1001,6 +1002,26 @@ document.getElementById('f_phone').addEventListener('input',function(){
   renderAll();
   showToast(`Connected — ${leads.length} leads loaded`);
 })();
+
+// ========== PWA INSTALL ==========
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  document.getElementById('installBtn').style.display='';
+});
+function installPWA(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(r=>{
+    if(r.outcome==='accepted') document.getElementById('installBtn').style.display='none';
+    deferredPrompt=null;
+  });
+}
+window.addEventListener('appinstalled',()=>{
+  document.getElementById('installBtn').style.display='none';
+  deferredPrompt=null;
+});
 
 // Register Service Worker for PWA
 if('serviceWorker' in navigator){
