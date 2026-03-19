@@ -223,6 +223,7 @@ table.leads-table td a:hover{text-decoration:underline}
 .leads-grid{grid-template-columns:1fr}
 .form-row{grid-template-columns:1fr}
 }
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(212,168,83,0.4)}50%{box-shadow:0 0 0 8px rgba(212,168,83,0)}}
 </style>
 </head>
 <body>
@@ -239,7 +240,7 @@ table.leads-table td a:hover{text-decoration:underline}
 <button class="btn btn-ghost" onclick="document.getElementById('importFile').click()">Import</button>
 <input type="file" id="importFile" accept=".json,.csv" style="display:none" onchange="importData(event)">
 <button class="btn btn-gold" onclick="openAddModal()">+ Add Lead</button>
-<button class="btn btn-ghost" id="installBtn" style="display:none" onclick="installPWA()">&#x1F4F2; Install App</button>
+<button class="btn btn-gold" id="installBtn" onclick="installPWA()" style="animation:pulse 2s infinite">&#x1F4F2; Install App</button>
 </div>
 </div>
 
@@ -1008,15 +1009,24 @@ let deferredPrompt=null;
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();
   deferredPrompt=e;
-  document.getElementById('installBtn').style.display='';
 });
 function installPWA(){
-  if(!deferredPrompt) return;
-  deferredPrompt.prompt();
-  deferredPrompt.userChoice.then(r=>{
-    if(r.outcome==='accepted') document.getElementById('installBtn').style.display='none';
-    deferredPrompt=null;
-  });
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(r=>{
+      if(r.outcome==='accepted') document.getElementById('installBtn').style.display='none';
+      deferredPrompt=null;
+    });
+  } else {
+    // Fallback: show instructions for manual install
+    const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isMac=/Macintosh/.test(navigator.userAgent);
+    let msg='';
+    if(isIOS) msg='Tap the Share button (box with arrow) at the bottom of Safari, then tap "Add to Home Screen"';
+    else if(isMac) msg='In Chrome: click the install icon in the address bar (download arrow), or go to ⋮ Menu → "Install Mainstay Leads Hub..."';
+    else msg='In Chrome: click ⋮ Menu → "Install app" or look for the install icon in the address bar';
+    alert('Install App\n\n'+msg);
+  }
 }
 window.addEventListener('appinstalled',()=>{
   document.getElementById('installBtn').style.display='none';
