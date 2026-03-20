@@ -256,6 +256,7 @@ table.leads-table td a:hover{text-decoration:underline}
 <button class="view-tab active" data-view="cards" onclick="setView('cards')">Cards</button>
 <button class="view-tab" data-view="table" onclick="setView('table')">Table</button>
 <button class="view-tab" data-view="kanban" onclick="setView('kanban')">Kanban</button>
+<button class="view-tab" data-view="contacted" onclick="setView('contacted')">&#9989; Contacted</button>
 <button class="view-tab" data-view="template" onclick="setView('template')" style="border-left:1px solid var(--border)">&#128172; Template</button>
 </div>
 <div class="search-box">
@@ -318,6 +319,7 @@ table.leads-table td a:hover{text-decoration:underline}
 <div class="leads-grid" id="cardsView"></div>
 <div class="leads-table-wrap" id="tableView" style="display:none"></div>
 <div class="kanban" id="kanbanView" style="display:none"></div>
+<div class="leads-grid" id="contactedView" style="display:none"></div>
 <div id="templateView" style="display:none;max-width:800px;margin:0 auto;padding:20px 0">
 <div style="background:var(--navy-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;margin-bottom:20px">
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
@@ -468,7 +470,7 @@ function fromDB(row){
     state:row.state||'', currentWebsite:row.current_website||'', siteStatus:row.site_status||'No Website',
     linkedin:row.linkedin||'', facebook:row.facebook||'', score:row.score||'Cool',
     package:row.package||'Unknown', source:row.source||'Other', status:row.status||'New',
-    notes:row.notes||'', outreach:row.outreach||'', dealValue:row.deal_value||1500,
+    notes:row.notes||'', outreach:row.outreach||'', dealValue:row.deal_value||3500,
     monthlyValue:row.monthly_value||0, lastContacted:row.last_contacted||null,
     addedDate:row.created_at?row.created_at.split('T')[0]:'', addedBy:row.added_by||'Sail'
   };
@@ -511,9 +513,9 @@ async function loadData(){
 
 function getDealValue(lead){
   if(lead.dealValue && lead.dealValue > 0) return lead.dealValue;
-  if(lead.package==='Foundation') return 1500;
+  if(lead.package==='Foundation') return 3500;
   if(lead.package==='Premium') return 3500;
-  return 1500;
+  return 3500;
 }
 
 function getMonthlyValue(lead){
@@ -599,6 +601,7 @@ function setView(view){
   document.getElementById('cardsView').style.display = view==='cards'?'grid':'none';
   document.getElementById('tableView').style.display = view==='table'?'block':'none';
   document.getElementById('kanbanView').style.display = view==='kanban'?'flex':'none';
+  document.getElementById('contactedView').style.display = view==='contacted'?'grid':'none';
   document.getElementById('templateView').style.display = view==='template'?'block':'none';
   if(view!=='template') renderView();
 }
@@ -614,10 +617,17 @@ function copyTemplate(){
 
 function renderView(){
   const filtered = getFilteredLeads();
-  document.getElementById('emptyState').style.display = filtered.length===0?'block':'none';
-  if(currentView==='cards') renderCards(filtered);
-  else if(currentView==='table') renderTable(filtered);
-  else renderKanban(filtered);
+  if(currentView==='contacted'){
+    const contactedLeads = filtered.filter(l=>l.status==='Contacted');
+    document.getElementById('emptyState').style.display = contactedLeads.length===0?'block':'none';
+    renderContactedCards(contactedLeads);
+  } else {
+    const activeLeads = currentView==='cards' ? filtered.filter(l=>l.status!=='Contacted') : filtered;
+    document.getElementById('emptyState').style.display = activeLeads.length===0?'block':'none';
+    if(currentView==='cards') renderCards(activeLeads);
+    else if(currentView==='table') renderTable(filtered);
+    else renderKanban(filtered);
+  }
 }
 
 // ---- CARDS ----
@@ -661,8 +671,10 @@ function renderCards(data){
           ${STATUSES.map(s=>`<option value="${s}"${l.status===s?' selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
         </select>
         <div class="card-actions-row">
+          ${l.status!=='Contacted'?`<button class="btn btn-sm" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,0.2);font-size:11px" onclick="event.stopPropagation();markContacted('${l.id}')">&#10003; Contacted</button>`:''}
           <button class="card-action-btn" onclick="openDetail('${l.id}')" title="View Details">&#128065;</button>
           <button class="card-action-btn" onclick="openEditModal('${l.id}')" title="Edit">&#9998;</button>
+          <button class="card-action-btn" style="color:var(--red)" onclick="event.stopPropagation();quickDelete('${l.id}')" title="Delete">&#128465;</button>
         </div>
       </div>
     </div>`;
@@ -761,6 +773,68 @@ async function deleteLead(){
     leads = leads.filter(x=>x.id!==detailLeadId);
     closeDetailModal();renderAll();showToast('Lead deleted','error');
   }catch(e){showToast('Delete failed','error')}
+}
+
+async function markContacted(id){
+  const l = leads.find(x=>x.id===id);
+  if(!l) return;
+  l.status = 'Contacted';
+  l.lastContacted = new Date().toISOString().split('T')[0];
+  renderAll();
+  showToast(`${l.business} marked as contacted`);
+  try{await supa('PATCH', TABLE+'?id=eq.'+id, {status:'Contacted',last_contacted:l.lastContacted})}catch(e){showToast('Update failed','error')}
+}
+
+async function quickDelete(id){
+  const l = leads.find(x=>x.id===id);
+  if(!l) return;
+  if(!confirm(`Permanently delete "${l.business}"? This cannot be undone.`)) return;
+  try{
+    await supa('DELETE', TABLE+'?id=eq.'+id);
+    leads = leads.filter(x=>x.id!==id);
+    renderAll();showToast('Lead deleted','error');
+  }catch(e){showToast('Delete failed','error')}
+}
+
+function renderContactedCards(data){
+  const grid = document.getElementById('contactedView');
+  if(!data.length){grid.innerHTML='';return}
+  grid.innerHTML = data.map(l=>{
+    const badgeClass = INDUSTRY_BADGES[l.industry]||'other';
+    return `
+    <div class="lead-card contacted" style="border-left:3px solid var(--green)">
+      <div class="card-accent" style="background:var(--green)"></div>
+      <div class="card-top">
+        <div class="card-biz">
+          <div class="card-biz-name">${esc(l.business)}</div>
+          <div class="card-biz-meta">
+            ${l.industry?`<span class="badge badge-${badgeClass}">${esc(l.industry)}</span>`:''}
+            <span class="badge" style="background:var(--green-bg);color:var(--green)">Contacted</span>
+            ${l.lastContacted?`<span style="font-size:11px;color:var(--slate-dark)">${l.lastContacted}</span>`:''}
+          </div>
+        </div>
+        <div class="card-score">
+          <div class="card-deal">$${getDealValue(l).toLocaleString()}</div>
+        </div>
+      </div>
+      <div class="card-contact">
+        ${l.owner?`<div class="contact-row"><span class="icon">&#128100;</span><span class="owner-name">${esc(l.owner)}</span>${l.ownerTitle?` <span style="color:var(--slate-dark);font-size:11px">· ${esc(l.ownerTitle)}</span>`:''}</div>`:''}
+        ${l.email?`<div class="contact-row"><span class="icon">&#9993;</span><a href="mailto:${esc(l.email)}">${esc(l.email)}</a></div>`:''}
+        ${l.phone?`<div class="contact-row"><span class="icon">&#128222;</span><a href="tel:${esc(l.phone)}">${esc(l.phone)}</a></div>`:''}
+      </div>
+      ${l.notes?`<div class="card-notes"><div class="card-notes-text">${esc(l.notes)}</div></div>`:''}
+      <div class="card-footer">
+        <select class="status-select contacted" onchange="updateStatus('${l.id}',this.value)">
+          ${STATUSES.map(s=>`<option value="${s}"${l.status===s?' selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
+        </select>
+        <div class="card-actions-row">
+          <button class="card-action-btn" onclick="openDetail('${l.id}')" title="View Details">&#128065;</button>
+          <button class="card-action-btn" onclick="openEditModal('${l.id}')" title="Edit">&#9998;</button>
+          <button class="card-action-btn" style="color:var(--red)" onclick="event.stopPropagation();quickDelete('${l.id}')" title="Delete">&#128465;</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ========== ADD/EDIT ==========
